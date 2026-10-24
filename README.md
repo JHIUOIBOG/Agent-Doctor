@@ -50,6 +50,9 @@ agent-doctor report --output report.json --force # 覆盖
 写入采用"临时文件 + `os.replace`"的原子替换，中途失败不会留下半个 JSON。
 报告在落盘前完成脱敏。
 
+报告字段契约见 [`docs/REPORT_SCHEMA.md`](docs/REPORT_SCHEMA.md)，
+字节级样例见 [`tests/contract/golden/report.json`](tests/contract/golden/report.json)。
+
 ### `proxy` — 本地端口连通性
 
 只做 TCP 握手，不发送任何应用层数据。

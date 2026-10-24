@@ -14,8 +14,9 @@
 - `agent-doctor report`：导出 JSON / 纯文本报告，`--output` 原子写入，默认拒绝覆盖
 - 四个命令均支持 `--json`（`report` 为默认格式），输出前对路径与凭据脱敏
 - 统一诊断结果模型（`name / status / summary / details / recommendation`）与聚合报告
+- 报告契约层：`docs/REPORT_SCHEMA.md` + 字节级快照 `tests/contract/golden/report.json` + 字段级断言
 - 退出码契约：0 正常 / 1 诊断问题 / 2 用法或输入错误 / 3 内部错误
-- 185 条 pytest 用例，覆盖正常、失败、缺失文件、权限错误与退出码
+- 196 条 pytest 用例，覆盖正常、失败、缺失文件、权限错误、退出码与报告结构
 - GitHub Actions：Windows + Ubuntu × Python 3.12 + 3.13
 
 ### 安全
