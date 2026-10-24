@@ -472,10 +472,62 @@ addopts = "-ra --strict-markers"
 | 5 | `checks/base.py` 放 Check 协议 | 合并进 `core/registry.py` | 只有 30 行，单独开文件反而增加跳转成本 |
 | 6 | `logging/setup.py` | `logging_setup.py` | 包内出现名为 `logging` 的子包容易和标准库混淆 |
 | 7 | `models/settings.py` + pydantic-settings | 未实现，依赖未引入 | 当前没有任何可配置项；"不新增不必要的依赖"优先 |
-| 8 | 6 个检查项 | 6 个（Python / 平台 / PATH / 工具链 / 文件系统 / 长路径） | 阶段二先做 4 个打通管道，阶段三补齐后两个 |
-| 9 | `--probe-tool-versions` 显式开关 | 未实现 | 阶段二无此需求；默认零子进程的约束保持不变 |
+| 8 | 6 个检查项 | 注册 7 个，默认执行 6 个（Python / 平台 / PATH / 工具链 / 文件系统 / 长路径）；`toolchain.versions` 需显式开关 | 阶段二先做 4 个打通管道，阶段三补齐后两个，阶段四加版本探测 |
+| 9 | `--probe-tool-versions` 显式开关 | 已实现（`check` 与 `report` 均支持） | 见 §15；默认零子进程的约束保持不变 |
 | 10 | 全局 `--no-color` | 未实现，依赖 Rich 的非 TTY 自动降级与 `NO_COLOR` | 少一个全局选项，行为已经满足"管道输出不带 ANSI" |
 
 `report/text_exporter.py` 同理未单独建文件：人类可读输出由 `cli/rendering.py` 承担，
 它依赖 Rich，属于表现层，不该放进 `report/`。
 
+
+---
+
+## 15. 工具版本探测（阶段四新增）
+
+默认**不执行任何外部程序**。`--probe-tool-versions` 是显式开关；未开启时
+`toolchain.versions` 根本不会进入本次运行——不是"执行了再忽略结果"。
+
+### 15.1 门禁机制
+
+检查项在注册时带 `requires_probe=True` 标记：
+
+```python
+@check("toolchain.versions", "工具版本", requires_probe=True)
+```
+
+`select(names, probe_versions=False)` 过滤掉带标记的项，`run_checks()` 默认
+`probe_versions=False`。因此默认路径的子进程数量恒为 0，由
+`test_default_check_creates_no_subprocess` 直接断言（替换 `subprocess.run`
+后断言调用次数为 0）。
+
+若用户显式 `--only toolchain.versions` 却没开开关，返回 `UsageError`（退出码 2）
+并提示需要同时传入开关，而不是静默跳过。
+
+### 15.2 执行约束
+
+| 约束 | 实现 |
+|------|------|
+| 不经 shell | `shell=False`，参数是 `[exe, "--version"]` 固定列表 |
+| 可执行文件可信 | 路径来自 `shutil.which()`，不是用户输入 |
+| 不挂死 | `timeout=10s` |
+| 不等待输入 | `stdin=subprocess.DEVNULL` |
+| 不灌爆报告 | 只取 stdout 首行，版本串截断到 64 字符 |
+| 不泄漏路径 | `OSError` 只记录 `类型: strerror`，不含可执行文件路径 |
+
+### 15.3 结果分类
+
+`ProbeOutcome` 取值为 `ok` / `not_found` / `failed`（非零退出）/ `timeout` /
+`error`（OSError）。
+
+状态判定刻意与 `toolchain.presence` 分工，避免同一问题报两次：
+
+- `not_found`（不在 PATH）→ 记"未安装"，**不**让本项告警；
+- 全部 `not_found` → `info`，没有可探测的对象；
+- 有 `failed` / `timeout` / `error` → `warn`，summary 点出具体工具。
+
+### 15.4 超时取值依据
+
+初版设 3 秒。实测在本机 Windows 上首次运行 `check --probe-tool-versions`
+时 `npm` 被误判超时；单独计时 `npm --version` 稳定在 1.5 秒左右，属冷启动
+（Node 首次加载模块 + 杀毒软件扫描）。放宽到 **10 秒**。诊断工具误报"探测
+失败"会把用户引向错误的排查方向，代价高于多等几秒。

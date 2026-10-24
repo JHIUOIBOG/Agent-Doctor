@@ -22,13 +22,16 @@ def run_checks(
     checks: Sequence[Check] | None = None,
     *,
     now: datetime | None = None,
+    probe_versions: bool = False,
 ) -> DiagnosticReport:
     """执行检查项并组装报告。
 
     :param checks: 要执行的检查项；``None`` 表示注册表里的全部
     :param now: 注入的时间，便于测试得到稳定输出
+    :param probe_versions: 是否包含需要执行外部程序的检查项；默认 ``False``，
+        保证默认路径零进程创建
     """
-    selected = tuple(checks) if checks is not None else select()
+    selected = tuple(checks) if checks is not None else select(probe_versions=probe_versions)
     results = tuple(_execute(item) for item in selected)
     return DiagnosticReport(
         tool=ToolInfo(version=__version__),

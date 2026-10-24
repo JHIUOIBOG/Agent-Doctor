@@ -21,7 +21,7 @@ pip install -e ".[dev]"
 
 ### `check` — 基础环境检查
 
-运行 6 个只读检查项，输出表格。
+默认运行 6 个只读检查项，输出表格。
 
 | 检查项 | 说明 |
 |--------|------|
@@ -29,6 +29,7 @@ pip install -e ".[dev]"
 | `platform.info` | 系统 / 架构 / 控制台编码（cp936 会提示） |
 | `path.health` | PATH 中不存在、重复、非 ASCII、超长条目 |
 | `toolchain.presence` | git / node / npm / uv 是否存在（只查 `shutil.which`，不执行） |
+| `toolchain.versions` | 工具版本，**需 `--probe-tool-versions`**，会执行 `--version` |
 | `fs.health` | 临时目录可写性、剩余磁盘空间 |
 | `windows.longpath` | 长路径支持是否启用（只读注册表） |
 
@@ -36,7 +37,13 @@ pip install -e ".[dev]"
 agent-doctor check
 agent-doctor check --json      # 机器可读
 agent-doctor check --only python.version --only fs.health
+agent-doctor check --probe-tool-versions   # 显式开启版本探测
 ```
+
+**默认零子进程**：不开 `--probe-tool-versions` 时，`toolchain.versions` 根本不会
+进入本次运行，本工具不会启动任何外部程序。开启后以 `shell=False`、固定参数、
+10 秒超时、`stdin=DEVNULL` 的方式调用 `git/node/npm/uv --version`，只取版本号。
+详见 [`docs/DESIGN.md`](docs/DESIGN.md) §15。
 
 ### `report` — 导出诊断报告
 

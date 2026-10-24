@@ -35,10 +35,16 @@ def report_command(
     output: str | None = typer.Option(None, "--output", "-o", help="写入文件而不是标准输出"),
     force: bool = typer.Option(False, "--force", help="允许覆盖已存在的输出文件"),
     only: list[str] | None = typer.Option(None, "--only", help="只运行指定检查项，可重复使用"),
+    probe_versions: bool = typer.Option(
+        False,
+        "--probe-tool-versions",
+        help="显式启用外部程序版本探测（会执行 git/node/npm/uv --version）",
+    ),
 ) -> None:
     """导出结构化诊断报告（只读，不修改任何系统配置）。"""
     with rendering.guard():
-        report = run_checks(select(tuple(only) if only else None))
+        selected = select(tuple(only) if only else None, probe_versions=probe_versions)
+        report = run_checks(selected, probe_versions=probe_versions)
         text = build_report_text(report, output_format)
         if output is None:
             typer.echo(text, nl=False)

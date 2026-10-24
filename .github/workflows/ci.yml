@@ -50,3 +50,24 @@ jobs:
 
       - name: License policy and manifest freshness
         run: python scripts/gen_licenses.py --check
+
+  package:
+    # 构建只在一个平台跑：产物是 py3-none-any，与平台无关。
+    # 目的是确认 sdist/wheel 能构建，且 wheel 里没有夹带测试、文档或缓存。
+    name: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install
+        run: python -m pip install -e ".[dev]"
+
+      - name: Build sdist and wheel
+        run: python -m build
+
+      - name: Verify wheel contents
+        run: python scripts/check_dist.py

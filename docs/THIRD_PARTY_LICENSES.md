@@ -27,6 +27,7 @@ CI 通过**白名单**强制该政策：默认拒绝未知许可证。新增依�
 | Pygments          | 2.21.0  | BSD-2-Clause               | https://pygments.org                                       |
 | annotated-doc     | 0.0.5   | MIT                        | https://github.com/fastapi/annotated-doc                   |
 | annotated-types   | 0.8.0   | MIT                        | https://github.com/annotated-types/annotated-types         |
+| build             | 1.6.1   | MIT                        | https://build.pypa.io                                      |
 | colorama          | 0.4.6   | BSD License                | https://github.com/tartley/colorama                        |
 | coverage          | 7.17.0  | Apache-2.0                 | https://github.com/coveragepy/coveragepy                   |
 | iniconfig         | 2.3.1   | MIT                        | https://github.com/pytest-dev/iniconfig                    |
@@ -36,6 +37,7 @@ CI 通过**白名单**强制该政策：默认拒绝未知许可证。新增依�
 | pluggy            | 1.7.0   | MIT License                | https://github.com/pytest-dev/pluggy                       |
 | pydantic          | 2.14.1  | MIT                        | https://github.com/pydantic/pydantic                       |
 | pydantic_core     | 2.50.1  | MIT                        | https://github.com/pydantic                                |
+| pyproject_hooks   | 1.3.3   | MIT                        | https://github.com/pypa/pyproject-hooks                    |
 | pytest            | 9.1.1   | MIT                        | https://docs.pytest.org/en/latest/                         |
 | pytest-cov        | 7.1.0   | MIT                        | https://pytest-cov.readthedocs.io/en/latest/changelog.html |
 | rich              | 15.0.0  | MIT License                | https://github.com/Textualize/rich                         |
