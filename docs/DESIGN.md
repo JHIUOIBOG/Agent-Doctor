@@ -424,3 +424,27 @@ addopts = "-ra --strict-markers"
 8. **许可证署名**：`Copyright (c) 2026 <你的名字或组织>`，请给出署名文本。
 
 确认后我立即开始 S1，只做 `hash` 这一条垂直切片，不做其他命令。
+
+---
+
+## 14. 阶段二实施记录（与 v0.1 设计的差异）
+
+阶段二的需求把"诊断结果模型"的字段和状态取值定死了，与本文档 §4.2、§6 的初版设计不同。
+按"对已有工作影响最小"的原则处理：**需求优先，文档补记**，不推翻 §1–§13 的分析。
+
+| # | v0.1 设计 | 实际实现 | 原因 |
+|---|-----------|----------|------|
+| 1 | `Status = ok / warn / error / skipped` | `Status = pass / warn / fail / info` | 阶段二需求明确指定；四个值一一对应，无信息损失 |
+| 2 | `CheckResult(id, title, message, severity, duration_ms, findings)` | `CheckResult(name, status, summary, details, recommendation)` | 需求指定字段；`severity` 与 `status` 语义重叠，去掉一层 |
+| 3 | `details` 允许嵌套对象 | 只允许 `str / bool / int / float / null` | 消费者处理更简单，也顺手挡掉了"把文件内容塞进报告"这类误用 |
+| 4 | `agent-doctor report --format json` | 三个命令各自支持 `--json` | 阶段二未包含 `report` 命令；`--json` 用同一套导出器，后续加 `report` 时可直接复用 |
+| 5 | `checks/base.py` 放 Check 协议 | 合并进 `core/registry.py` | 只有 30 行，单独开文件反而增加跳转成本 |
+| 6 | `logging/setup.py` | `logging_setup.py` | 包内出现名为 `logging` 的子包容易和标准库混淆 |
+| 7 | `models/settings.py` + pydantic-settings | 未实现，依赖未引入 | 当前没有任何可配置项；"不新增不必要的依赖"优先 |
+| 8 | 6 个检查项 | 4 个（Python / 平台 / PATH / 工具链） | 文件系统可写探测与长路径检查留到下一阶段，先把管道跑通 |
+| 9 | `--probe-tool-versions` 显式开关 | 未实现 | 阶段二无此需求；默认零子进程的约束保持不变 |
+| 10 | 全局 `--no-color` | 未实现，依赖 Rich 的非 TTY 自动降级与 `NO_COLOR` | 少一个全局选项，行为已经满足"管道输出不带 ANSI" |
+
+`report/text_exporter.py` 同理未单独建文件：人类可读输出由 `cli/rendering.py` 承担，
+它依赖 Rich，属于表现层，不该放进 `report/`。
+

@@ -1,0 +1,75 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "agent-doctor"
+version = "0.1.0"
+description = "面向 Windows 开发者的本地 AI 编程环境诊断工具"
+readme = "README.md"
+requires-python = ">=3.12"
+license = { text = "MIT" }
+authors = [{ name = "REDACTED" }]
+keywords = ["diagnostics", "cli", "windows", "ai-tooling"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Environment :: Console",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3 :: Only",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: System :: Systems Administration",
+]
+dependencies = [
+    "typer>=0.27,<1",
+    "rich>=15,<16",
+    "pydantic>=2.14,<3",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.3",
+    "pytest-cov>=5.0",
+    "ruff>=0.6",
+]
+
+[project.scripts]
+agent-doctor = "agent_doctor.cli.app:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/agent_doctor"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "N", "UP", "B", "SIM", "C4", "RUF", "S"]
+ignore = [
+    "S101",   # assert 在测试中是正常手段
+    "RUF001", # 中文全角标点在提示文本里是刻意的
+    "RUF002",
+    "RUF003",
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["S101", "S105", "S106", "S108"]
+# Typer 的参数声明就是在函数默认值里调用 typer.Option / typer.Argument，B008 在这里是误报
+"src/agent_doctor/cli/**" = ["B008"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["agent_doctor"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]
+addopts = "-ra --strict-markers"
+filterwarnings = ["error::DeprecationWarning:agent_doctor.*"]
+
+[tool.coverage.run]
+source = ["agent_doctor"]
+branch = true
+
+[tool.coverage.report]
+exclude_lines = ["pragma: no cover", "if TYPE_CHECKING:", "raise NotImplementedError"]
