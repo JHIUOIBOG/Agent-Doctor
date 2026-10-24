@@ -210,22 +210,20 @@ Incompatible versions:     2.x
 
 ## 7. 需要人工确认的事项
 
-1. **作者署名（重要）**
-   `pyproject.toml` 当前是 `authors = [{ name = "REDACTED" }]`，
-   `LICENSE` 是 `Copyright (c) 2026 REDACTED`。
-   这两处会公开出现在仓库、PyPI 元数据和 wheel 里。如果 `REDACTED` 只是脱敏
-   占位而不是你想公开的署名，**推送前必须替换**。
+1. ~~**作者署名（重要）**~~ **已确认**
+   署名统一为 `JHIUOIBOG`：`pyproject.toml` 的 `authors` 与 `LICENSE` 的
+   `Copyright (c) 2026 JHIUOIBOG` 均已更新。
 
-2. **远端仓库地址与可见性**
-   需要你提供仓库 URL，并明确 public 还是 private。我不会自行创建仓库或改可见性。
+2. ~~**远端仓库地址与可见性**~~ **已确认**
+   `https://github.com/JHIUOIBOG/Agent-Doctor`，**public**，创建时为空仓库（0 KB）。
 
-3. **默认分支名**
-   当前本地是 `master`。GitHub 新建仓库默认 `main`。是否重命名？
-   （重命名会改写分支引用，建议在首次推送前决定。）
+3. ~~**默认分支名**~~ **已确认**
+   GitHub 侧默认分支为 `main`；本地分支仍为 `master`，推送时映射为 `main`。
 
 4. **推送方式**
-   建议推到独立分支（如 `ci/verify`）先跑一次 Actions，确认全绿后再合入默认分支。
-   需要你确认这个策略，或指定别的分支名。
+   空仓库的默认分支由**第一个推送的分支**决定，而修改默认分支需要仓库
+   Settings 权限（本机无 `gh`，无法通过 API 改）。因此不推独立分支，直接推
+   `main` 建立默认分支，CI 同样会在 push 时触发。若 CI 失败，修复后再推即可。
 
 5. **`AKIA` 误报预案**
    若 GitHub push protection 拦截 `AKIAIOSFODNN7EXAMPLE`，把测试值改成

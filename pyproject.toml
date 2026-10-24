@@ -9,7 +9,7 @@ description = "面向 Windows 开发者的本地 AI 编程环境诊断工具"
 readme = "README.md"
 requires-python = ">=3.12"
 license = { text = "MIT" }
-authors = [{ name = "REDACTED" }]
+authors = [{ name = "JHIUOIBOG" }]
 keywords = ["diagnostics", "cli", "windows", "ai-tooling"]
 classifiers = [
     "Development Status :: 3 - Alpha",
