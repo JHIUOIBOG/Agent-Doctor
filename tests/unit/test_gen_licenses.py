@@ -207,6 +207,27 @@ def test_unknown_url_is_blanked(fake_piplicenses: dict[str, object], output_path
     assert "UNKNOWN" not in content
 
 
+def test_diff_reports_added_and_removed_rows(capsys: pytest.CaptureFixture[str]) -> None:
+    """--check 失败时必须给出具体差异，否则 CI 只显示"退出码 1"。"""
+    on_disk = "# 头部\n| Name | License | URL |\n| old | MIT | u |\n"
+    expected = "# 头部\n| Name | License | URL |\n| new | BSD | u |\n"
+
+    gen_licenses._print_diff(on_disk, expected)
+    err = capsys.readouterr().err
+
+    assert "+ | new | BSD | u |" in err
+    assert "- | old | MIT | u |" in err
+
+
+def test_diff_ignores_header_changes(capsys: pytest.CaptureFixture[str]) -> None:
+    on_disk = "# 旧头部\n| a | MIT | u |\n"
+    expected = "# 新头部\n| a | MIT | u |\n"
+
+    gen_licenses._print_diff(on_disk, expected)
+
+    assert capsys.readouterr().err == ""
+
+
 def test_allowed_licenses_are_lowercase_free_and_semicolon_joined() -> None:
     """白名单参数必须是分号分隔的常量，防止有人塞进逗号导致静默失效。"""
     assert ";" in gen_licenses.ALLOWED_LICENSES_ARG

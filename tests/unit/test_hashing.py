@@ -63,16 +63,40 @@ def test_permission_error_is_translated(monkeypatch: pytest.MonkeyPatch, tmp_pat
 def test_sharing_violation_is_reported_as_busy(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
+    """winerror 32/33 是 Windows 特有的文件共享冲突。
+
+    POSIX 上 ``OSError`` 不保留第 4 个参数（winerror），所以这里显式设置属性，
+    而不是依赖构造参数——否则该测试只能在 Windows 上通过。
+    """
     target = tmp_path / "busy.bin"
     target.write_bytes(b"x")
 
     def boom(self: Path, *args: object, **kwargs: object) -> None:
-        raise PermissionError(13, "The process cannot access the file", None, 32)
+        exc = PermissionError(13, "The process cannot access the file")
+        exc.winerror = 32  # type: ignore[attr-defined]
+        raise exc
 
     monkeypatch.setattr(Path, "open", boom)
     with pytest.raises(AccessDeniedError) as excinfo:
         hash_file(target)
     assert "占用" in excinfo.value.message
+
+
+def test_permission_error_without_winerror_is_plain_denied(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """没有 winerror 时（POSIX 的常态）应报"没有读取权限"，而不是"被占用"。"""
+    target = tmp_path / "denied.bin"
+    target.write_bytes(b"x")
+
+    def boom(self: Path, *args: object, **kwargs: object) -> None:
+        raise PermissionError(13, "Permission denied")
+
+    monkeypatch.setattr(Path, "open", boom)
+    with pytest.raises(AccessDeniedError) as excinfo:
+        hash_file(target)
+    assert "没有读取权限" in excinfo.value.message
+    assert "占用" not in excinfo.value.message
 
 
 def test_checked_file_is_not_modified(tmp_path: Path) -> None:

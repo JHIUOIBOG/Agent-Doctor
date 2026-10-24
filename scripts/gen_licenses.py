@@ -32,8 +32,11 @@ from pathlib import Path
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 OUTPUT_PATH = PROJECT_ROOT / "docs" / "THIRD_PARTY_LICENSES.md"
 
-# 本项目自身不属于第三方依赖。
-IGNORED_PACKAGES = ("agent-doctor",)
+# 这些不是项目的第三方依赖：
+# - agent-doctor 是项目自身；
+# - pip / setuptools / wheel 是打包工具链，CI runner 常常预装而本地 venv
+#   没有（Python 3.12+ 的 venv 默认不装 setuptools），留着会让清单随环境漂移。
+IGNORED_PACKAGES = ("agent-doctor", "pip", "setuptools", "wheel")
 
 # 白名单：只允许宽松许可证。任何不在其中的许可证都会让 CI 失败，
 # 迫使新增依赖时人工审查其兼容性。新增条目需要在这里显式放行。
@@ -130,6 +133,33 @@ def _render_table(packages: list[dict[str, object]]) -> str:
     return "\n".join(lines)
 
 
+def _table_rows(text: str) -> set[str]:
+    """只取表格行，忽略说明性头部（头部改动不该淹没依赖差异）。"""
+    return {line for line in text.splitlines() if line.startswith("|")}
+
+
+def _print_diff(on_disk: str, expected: str, *, limit: int = 20) -> None:
+    """打印清单与当前环境的依赖差异，便于在 CI 日志里直接看出原因。"""
+    disk_rows = _table_rows(on_disk)
+    expected_rows = _table_rows(expected)
+
+    added = sorted(expected_rows - disk_rows)
+    removed = sorted(disk_rows - expected_rows)
+
+    if added:
+        print(f"当前环境有、清单里没有（{len(added)} 行）：", file=sys.stderr)
+        for line in added[:limit]:
+            print(f"  + {line}", file=sys.stderr)
+        if len(added) > limit:
+            print(f"  …还有 {len(added) - limit} 行", file=sys.stderr)
+    if removed:
+        print(f"清单里有、当前环境没有（{len(removed)} 行）：", file=sys.stderr)
+        for line in removed[:limit]:
+            print(f"  - {line}", file=sys.stderr)
+        if len(removed) > limit:
+            print(f"  …还有 {len(removed) - limit} 行", file=sys.stderr)
+
+
 def build_content() -> str:
     """返回完整的清单文件内容（UTF-8 文本，LF 换行）。"""
     proc = _run_piplicenses("--format=json", "--with-urls")
@@ -189,6 +219,7 @@ def main(argv: list[str] | None = None) -> int:
                 "请运行 python scripts/gen_licenses.py 重新生成并提交。",
                 file=sys.stderr,
             )
+            _print_diff(OUTPUT_PATH.read_text(encoding="utf-8"), content)
             if sys.platform != "win32":
                 print(
                     f"注意：当前平台是 {sys.platform}，而清单是在 Windows 上生成的。"
