@@ -43,9 +43,17 @@ jobs:
               tail -60 pytest.log
               echo '```'
             } >> "$GITHUB_STEP_SUMMARY"
-            tail -40 pytest.log | while IFS= read -r line; do
-              echo "::error::$line"
-            done
+            # 只把失败相关的行转成注解：覆盖率表格会占满注解配额，
+            # 上一轮就是因为这个导致看不到真正失败的测试。
+            if grep -qE '^(FAILED|ERROR)' pytest.log; then
+              grep -E '^(FAILED|ERROR)' pytest.log | head -8 | while IFS= read -r line; do
+                echo "::error::$line"
+              done
+            else
+              tail -5 pytest.log | while IFS= read -r line; do
+                echo "::error::$line"
+              done
+            fi
           fi
           exit "$status"
 

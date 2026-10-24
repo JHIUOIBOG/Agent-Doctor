@@ -24,6 +24,7 @@
 from __future__ import annotations
 
 import argparse
+import json
 import subprocess
 import sys
 from pathlib import Path
@@ -71,6 +72,13 @@ CI 通过**白名单**强制该政策：默认拒绝未知许可证。新增依�
 > 对一个声明 `License: LGPL-2.1` 的包，`--fail-on="GPL;AGPL;SSPL"`
 > 退出码为 0（放行），加上 `--partial-match` 才为 1。因此改用白名单。
 
+> **为什么不记录版本号**
+>
+> 依赖用 `>=` 区间声明，CI 每次安装当时的最新版。若清单记录精确版本，
+> 任何一次依赖升级都会让清单"过期"，而那与许可证无关，只会制造噪音。
+> 清单记录的是**依赖集合与各自的许可证**：包的增删或许可证变更会让
+> `--check` 失败，版本漂移不会。
+
 ## 清单
 """
 
@@ -104,15 +112,39 @@ def _display_path(path: Path) -> str:
         return str(path)
 
 
+def _render_table(packages: list[dict[str, object]]) -> str:
+    """渲染成 markdown 表格，**不含版本号**。
+
+    版本号会随 CI 安装的最新版漂移，而清单要稳定到只对"依赖集合或许可证
+    变化"敏感，所以刻意不记录。
+    """
+    rows = sorted(packages, key=lambda item: str(item.get("Name", "")).lower())
+    lines = ["| Name | License | URL |", "|------|---------|-----|"]
+    for item in rows:
+        name = str(item.get("Name", "")).strip()
+        license_name = str(item.get("License", "")).strip()
+        url = str(item.get("URL", "")).strip()
+        if url == "UNKNOWN":
+            url = ""
+        lines.append(f"| {name} | {license_name} | {url} |")
+    return "\n".join(lines)
+
+
 def build_content() -> str:
     """返回完整的清单文件内容（UTF-8 文本，LF 换行）。"""
-    proc = _run_piplicenses("--format=markdown", "--with-urls")
+    proc = _run_piplicenses("--format=json", "--with-urls")
     if proc.returncode != 0:
         raise SystemExit(f"pip-licenses 执行失败：\n{proc.stderr.strip()}")
-    table = proc.stdout.strip()
-    if not table:
+    raw = proc.stdout.strip()
+    if not raw:
         raise SystemExit("pip-licenses 没有返回任何依赖，请确认依赖已安装。")
-    return f"{HEADER}\n{table}\n"
+    try:
+        packages = json.loads(raw)
+    except json.JSONDecodeError as exc:
+        raise SystemExit(f"无法解析 pip-licenses 的 JSON 输出：{exc}") from exc
+    if not packages:
+        raise SystemExit("pip-licenses 没有返回任何依赖，请确认依赖已安装。")
+    return f"{HEADER}\n{_render_table(packages)}\n"
 
 
 def check_policy() -> bool:

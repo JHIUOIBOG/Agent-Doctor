@@ -6,6 +6,7 @@
 
 from __future__ import annotations
 
+import json
 import subprocess
 from typing import TYPE_CHECKING
 
@@ -15,7 +16,21 @@ from scripts import gen_licenses
 if TYPE_CHECKING:
     from pathlib import Path
 
-FAKE_TABLE = "| Name | Version | License | URL |\n|---|---|---|---|\n| rich | 15.0.0 | MIT | x |\n"
+
+def _payload(*packages: tuple[str, str, str, str]) -> str:
+    """构造 pip-licenses --format=json 的替身输出。"""
+    return json.dumps(
+        [
+            {"Name": name, "Version": version, "License": lic, "URL": url}
+            for name, version, lic, url in packages
+        ]
+    )
+
+
+FAKE_JSON = _payload(
+    ("rich", "15.0.0", "MIT", "https://github.com/Textualize/rich"),
+    ("typer", "0.27.3", "MIT", "https://github.com/fastapi/typer"),
+)
 OFFENDER_LINE = "license GPL-3.0-only not in allow-only licenses was found for pkg:1.0.0"
 
 
@@ -28,14 +43,14 @@ def _completed(
 @pytest.fixture
 def fake_piplicenses(monkeypatch: pytest.MonkeyPatch) -> dict[str, object]:
     """按调用参数返回预设结果，并暴露可修改的状态。"""
-    state: dict[str, object] = {"policy_ok": True, "table": FAKE_TABLE}
+    state: dict[str, object] = {"policy_ok": True, "payload": FAKE_JSON}
 
     def _fake(*args: str) -> subprocess.CompletedProcess[str]:
         if any(arg.startswith("--allow-only") for arg in args):
             if state["policy_ok"]:
                 return _completed(0)
             return _completed(1, stdout=OFFENDER_LINE)
-        return _completed(0, stdout=str(state["table"]))
+        return _completed(0, stdout=str(state["payload"]))
 
     monkeypatch.setattr(gen_licenses, "_run_piplicenses", _fake)
     return state
@@ -114,11 +129,82 @@ def test_policy_failure_short_circuits_before_writing(
     assert not output_path.exists()
 
 
-def test_empty_table_is_rejected(fake_piplicenses: dict[str, object]) -> None:
-    fake_piplicenses["table"] = "   "
+def test_empty_payload_is_rejected(fake_piplicenses: dict[str, object]) -> None:
+    fake_piplicenses["payload"] = "   "
 
     with pytest.raises(SystemExit, match="没有返回任何依赖"):
         gen_licenses.build_content()
+
+
+def test_invalid_json_is_rejected(fake_piplicenses: dict[str, object]) -> None:
+    fake_piplicenses["payload"] = "not json at all"
+
+    with pytest.raises(SystemExit, match="无法解析"):
+        gen_licenses.build_content()
+
+
+def test_manifest_has_no_version_column(
+    fake_piplicenses: dict[str, object], output_path: Path
+) -> None:
+    gen_licenses.main([])
+    content = output_path.read_text(encoding="utf-8")
+    assert "| Name | License | URL |" in content
+    assert "Version" not in content
+
+
+def test_version_drift_does_not_expire_manifest(
+    fake_piplicenses: dict[str, object], output_path: Path
+) -> None:
+    """依赖升级只改版本号时，清单不应过期——这是 CI 稳定性的关键。
+
+    依赖用 `>=` 区间声明，CI 每次装最新版；若清单记录精确版本，
+    每次依赖升级都会让构建红，而那是噪音。
+    """
+    gen_licenses.main([])
+
+    fake_piplicenses["payload"] = _payload(
+        ("rich", "99.9.9", "MIT", "https://github.com/Textualize/rich"),
+        ("typer", "0.99.0", "MIT", "https://github.com/fastapi/typer"),
+    )
+
+    assert gen_licenses.main(["--check"]) == 0
+
+
+def test_added_package_expires_manifest(
+    fake_piplicenses: dict[str, object], output_path: Path
+) -> None:
+    gen_licenses.main([])
+
+    fake_piplicenses["payload"] = _payload(
+        ("rich", "15.0.0", "MIT", "https://github.com/Textualize/rich"),
+        ("typer", "0.27.3", "MIT", "https://github.com/fastapi/typer"),
+        ("httpx", "0.27.0", "BSD-3-Clause", "https://www.python-httpx.org"),
+    )
+
+    assert gen_licenses.main(["--check"]) == 1
+
+
+def test_license_change_expires_manifest(
+    fake_piplicenses: dict[str, object], output_path: Path
+) -> None:
+    """许可证变更必须被发现——这正是清单存在的意义。"""
+    gen_licenses.main([])
+
+    fake_piplicenses["payload"] = _payload(
+        ("rich", "15.0.0", "Apache-2.0", "https://github.com/Textualize/rich"),
+        ("typer", "0.27.3", "MIT", "https://github.com/fastapi/typer"),
+    )
+
+    assert gen_licenses.main(["--check"]) == 1
+
+
+def test_unknown_url_is_blanked(fake_piplicenses: dict[str, object], output_path: Path) -> None:
+    fake_piplicenses["payload"] = _payload(("pkg", "1.0", "MIT", "UNKNOWN"))
+    gen_licenses.main([])
+
+    content = output_path.read_text(encoding="utf-8")
+    assert "| pkg | MIT |  |" in content
+    assert "UNKNOWN" not in content
 
 
 def test_allowed_licenses_are_lowercase_free_and_semicolon_joined() -> None:
