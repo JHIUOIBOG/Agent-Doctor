@@ -13,6 +13,8 @@ EXPECTED_NAMES = {
     "platform.info",
     "path.health",
     "toolchain.presence",
+    "fs.health",
+    "windows.longpath",
 }
 
 

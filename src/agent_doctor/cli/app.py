@@ -11,6 +11,7 @@ from agent_doctor import __version__
 from agent_doctor.cli.commands.check import check_command
 from agent_doctor.cli.commands.hash import hash_command
 from agent_doctor.cli.commands.proxy import proxy_command
+from agent_doctor.cli.commands.report import report_command
 from agent_doctor.logging_setup import configure_logging
 
 app = typer.Typer(
@@ -47,6 +48,7 @@ def root(
 app.command("check", help="运行基础环境检查")(check_command)
 app.command("proxy", help="检查本地端口的 TCP 连通性")(proxy_command)
 app.command("hash", help="计算文件 SHA-256")(hash_command)
+app.command("report", help="导出结构化诊断报告")(report_command)
 
 
 def main() -> None:

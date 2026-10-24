@@ -2,7 +2,14 @@
 
 import json
 
-BUILTIN_CHECKS = {"python.version", "platform.info", "path.health", "toolchain.presence"}
+BUILTIN_CHECKS = {
+    "python.version",
+    "platform.info",
+    "path.health",
+    "toolchain.presence",
+    "fs.health",
+    "windows.longpath",
+}
 
 
 def test_check_runs_all_builtin_checks(run_cli) -> None:

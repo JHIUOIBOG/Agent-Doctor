@@ -6,6 +6,7 @@
 agent-doctor check
 agent-doctor proxy --host 127.0.0.1 --port 65532
 agent-doctor hash <path> [--expected <sha256>]
+agent-doctor report --format json
 ```
 
 ## 安装
@@ -20,12 +21,34 @@ pip install -e ".[dev]"
 
 ### `check` — 基础环境检查
 
-运行只读检查项（Python 版本、平台信息、PATH 健康度、工具链存在性），输出表格。
+运行 6 个只读检查项，输出表格。
+
+| 检查项 | 说明 |
+|--------|------|
+| `python.version` | 解释器版本、是否在虚拟环境 |
+| `platform.info` | 系统 / 架构 / 控制台编码（cp936 会提示） |
+| `path.health` | PATH 中不存在、重复、非 ASCII、超长条目 |
+| `toolchain.presence` | git / node / npm / uv 是否存在（只查 `shutil.which`，不执行） |
+| `fs.health` | 临时目录可写性、剩余磁盘空间 |
+| `windows.longpath` | 长路径支持是否启用（只读注册表） |
 
 ```bash
 agent-doctor check
 agent-doctor check --json      # 机器可读
+agent-doctor check --only python.version --only fs.health
 ```
+
+### `report` — 导出诊断报告
+
+```bash
+agent-doctor report                              # JSON 到 stdout
+agent-doctor report --format text                # 纯文本，适合贴进 issue
+agent-doctor report --output report.json         # 写文件（已存在则拒绝）
+agent-doctor report --output report.json --force # 覆盖
+```
+
+写入采用"临时文件 + `os.replace`"的原子替换，中途失败不会留下半个 JSON。
+报告在落盘前完成脱敏。
 
 ### `proxy` — 本地端口连通性
 

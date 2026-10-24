@@ -2,14 +2,19 @@
 
 import os
 import shutil
+from types import SimpleNamespace
 
 import pytest
 
+import agent_doctor.checks.fs_health as fs_module
+from agent_doctor.checks import longpath
 from agent_doctor.checks.path_health import path_health
 from agent_doctor.checks.platform_info import platform_info
 from agent_doctor.checks.python_env import python_version
 from agent_doctor.checks.toolchain import toolchain_presence
 from agent_doctor.models.enums import Status
+
+GIB = 1024**3
 
 
 def test_python_version_reports_current_interpreter() -> None:
@@ -71,3 +76,78 @@ def test_toolchain_warns_when_everything_missing(monkeypatch: pytest.MonkeyPatch
     assert result.status is Status.WARN
     assert "Git" in result.summary
     assert result.recommendation
+
+
+def _disk_usage(free: int, total: int = 500 * GIB) -> SimpleNamespace:
+    return SimpleNamespace(total=total, used=total - free, free=free)
+
+
+def test_fs_health_passes_with_space(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(fs_module, "_temp_dir_writable", lambda: True)
+    monkeypatch.setattr(fs_module.shutil, "disk_usage", lambda path: _disk_usage(400 * GIB))
+    result = fs_module.fs_health()
+    assert result.status is Status.PASS
+    assert result.details["temp_writable"] is True
+    assert result.details["free_gb"] == 400.0
+
+
+def test_fs_health_warns_on_low_space(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(fs_module, "_temp_dir_writable", lambda: True)
+    monkeypatch.setattr(fs_module.shutil, "disk_usage", lambda path: _disk_usage(1 * GIB))
+    result = fs_module.fs_health()
+    assert result.status is Status.WARN
+    assert "空间不足" in result.summary
+
+
+def test_fs_health_fails_when_temp_not_writable(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(fs_module, "_temp_dir_writable", lambda: False)
+    monkeypatch.setattr(fs_module.shutil, "disk_usage", lambda path: _disk_usage(400 * GIB))
+    result = fs_module.fs_health()
+    assert result.status is Status.FAIL
+    assert "不可写" in result.summary
+
+
+def test_fs_health_warns_when_disk_usage_unavailable(monkeypatch: pytest.MonkeyPatch) -> None:
+    def boom(path: object) -> None:
+        raise OSError(5, "Access is denied")
+
+    monkeypatch.setattr(fs_module, "_temp_dir_writable", lambda: True)
+    monkeypatch.setattr(fs_module.shutil, "disk_usage", boom)
+    result = fs_module.fs_health()
+    assert result.status is Status.WARN
+    assert "无法读取磁盘空间" in result.summary
+
+
+def test_temp_dir_writable_is_true_on_this_machine() -> None:
+    assert fs_module._temp_dir_writable() is True
+
+
+def test_long_paths_passes_when_enabled(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(longpath, "_IS_WINDOWS", True)
+    monkeypatch.setattr(longpath, "_read_long_paths_flag", lambda: 1)
+    result = longpath.long_paths()
+    assert result.status is Status.PASS
+    assert result.details["long_paths_enabled"] is True
+
+
+def test_long_paths_warns_when_disabled(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(longpath, "_IS_WINDOWS", True)
+    monkeypatch.setattr(longpath, "_read_long_paths_flag", lambda: 0)
+    result = longpath.long_paths()
+    assert result.status is Status.WARN
+    assert result.recommendation
+
+
+def test_long_paths_warns_when_unreadable(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(longpath, "_IS_WINDOWS", True)
+    monkeypatch.setattr(longpath, "_read_long_paths_flag", lambda: None)
+    result = longpath.long_paths()
+    assert result.status is Status.WARN
+    assert "无法读取" in result.summary
+
+
+def test_long_paths_is_info_off_windows(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(longpath, "_IS_WINDOWS", False)
+    result = longpath.long_paths()
+    assert result.status is Status.INFO
+    assert result.details["is_windows"] is False
