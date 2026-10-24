@@ -31,13 +31,31 @@ jobs:
         run: ruff format --check .
 
       - name: Pytest
-        run: pytest -q --cov=agent_doctor --cov-report=term-missing --cov-fail-under=85
+        shell: bash
+        run: |
+          set +e
+          pytest -q --cov=agent_doctor --cov-report=term-missing --cov-fail-under=85 2>&1 | tee pytest.log
+          status=${PIPESTATUS[0]}
+          if [ "$status" -ne 0 ]; then
+            {
+              echo "## Pytest 失败（exit $status）"
+              echo '```'
+              tail -60 pytest.log
+              echo '```'
+            } >> "$GITHUB_STEP_SUMMARY"
+            tail -40 pytest.log | while IFS= read -r line; do
+              echo "::error::$line"
+            done
+          fi
+          exit "$status"
 
   license:
-    # 许可证检查只跑一次，不放进矩阵：结果与平台无关，
-    # 独立 job 可以让失败原因一眼可见。
+    # 必须在 Windows 上跑：依赖集是平台相关的，typer 依赖
+    # `colorama; platform_system == "Windows"`，Linux 上不装。
+    # Windows 的依赖集是两个平台的超集，因此清单在 Windows 生成才完整。
+    # 若在 Linux 上生成/校验，清单会少 colorama 一行而必然失败。
     name: license policy
-    runs-on: ubuntu-latest
+    runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
 

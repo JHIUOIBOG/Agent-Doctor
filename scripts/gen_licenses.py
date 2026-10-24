@@ -14,6 +14,11 @@
 
 清单内容刻意不包含时间戳和 Python 精确版本，否则每次生成都会不同，
 `--check` 将永远失败。
+
+**平台约束**：依赖集是平台相关的。``typer`` 依赖
+``colorama; platform_system == "Windows"``，Linux 上不会安装。Windows 的依赖
+集是两个平台的超集，因此清单**必须在 Windows 上生成**，CI 的 license job 也
+跑在 ``windows-latest`` 上。在 Linux 上校验会因缺少 colorama 而不一致。
 """
 
 from __future__ import annotations
@@ -152,6 +157,14 @@ def main(argv: list[str] | None = None) -> int:
                 "请运行 python scripts/gen_licenses.py 重新生成并提交。",
                 file=sys.stderr,
             )
+            if sys.platform != "win32":
+                print(
+                    f"注意：当前平台是 {sys.platform}，而清单是在 Windows 上生成的。"
+                    "依赖集与平台相关（typer 依赖 "
+                    '`colorama; platform_system == "Windows"`），'
+                    "在非 Windows 平台校验必然不一致，这不代表清单过期。",
+                    file=sys.stderr,
+                )
             return 1
         print(f"许可证检查通过：{_display_path(OUTPUT_PATH)}")
         return 0
