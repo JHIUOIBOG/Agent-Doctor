@@ -1,0 +1,50 @@
+{
+  "schema_version": "1.0",
+  "tool": {
+    "name": "agent-doctor",
+    "version": "0.1.0"
+  },
+  "generated_at": "2026-10-24T09:00:00Z",
+  "results": [
+    {
+      "name": "python.version",
+      "status": "pass",
+      "summary": "Python 3.12.7",
+      "details": {
+        "version": "3.12.7",
+        "in_virtualenv": true,
+        "minor": 12,
+        "ratio": 1.5
+      },
+      "recommendation": null
+    },
+    {
+      "name": "path.health",
+      "status": "warn",
+      "summary": "PATH 共 41 项：2 个目录不存在",
+      "details": {
+        "entries": 41,
+        "missing": 2,
+        "duplicated": 0
+      },
+      "recommendation": "在系统环境变量里手动清理无效条目"
+    },
+    {
+      "name": "fs.health",
+      "status": "fail",
+      "summary": "临时目录不可写",
+      "details": {
+        "temp_writable": false,
+        "free_gb": null
+      },
+      "recommendation": "检查 TEMP 目录权限"
+    }
+  ],
+  "summary": {
+    "total": 3,
+    "passed": 1,
+    "warnings": 1,
+    "failures": 1,
+    "info": 0
+  }
+}

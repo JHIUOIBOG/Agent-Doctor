@@ -12,4 +12,5 @@ dist/
 htmlcov/
 .mypy_cache/
 *.log
-report.json
+# 只忽略仓库根目录下手工生成的报告，测试用的 golden 快照必须入库
+/report.json
