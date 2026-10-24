@@ -96,9 +96,17 @@ agent-doctor hash .\a.bin --expected 3a7bd3e2360a3d29eea436fcfb7e44c735d117c42d1
 ruff check .
 ruff format --check .
 pytest -q
+python scripts/gen_licenses.py --check   # 许可证白名单 + 依赖清单是否过期
 ```
 
-设计说明见 [`docs/DESIGN.md`](docs/DESIGN.md)。
+新增或升级依赖后，需重新生成许可证清单并一并提交：
+
+```bash
+python scripts/gen_licenses.py
+```
+
+设计说明见 [`docs/DESIGN.md`](docs/DESIGN.md)，依赖许可证清单见
+[`docs/THIRD_PARTY_LICENSES.md`](docs/THIRD_PARTY_LICENSES.md)。
 
 ## 许可证
 

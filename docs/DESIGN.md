@@ -32,23 +32,46 @@
 
 ## 2. 依赖与许可证核查（已完成）
 
-已通过 PyPI 元数据核对，全部为宽松许可，与 MIT 兼容：
+已通过 PyPI 元数据与本地实测核对，全部为宽松许可，与 MIT 兼容：
 
-| 依赖 | 用途 | PyPI 最新 | 许可证 | 与 MIT 兼容 |
-|------|------|-----------|--------|-------------|
-| typer | CLI 框架 | 0.27.3 | MIT（`license_expression`） | 是 |
+| 依赖 | 用途 | 版本 | 许可证 | 与 MIT 兼容 |
+|------|------|------|--------|-------------|
+| typer | CLI 框架 | 0.27.3 | MIT | 是 |
 | rich | 终端渲染 | 15.0.0 | MIT | 是 |
-| pydantic | 数据模型/校验 | 2.14.1 | MIT（PEP 639，`license` 字段留空，以仓库 LICENSE 为准） | 是 |
-| pydantic-settings | 配置加载 | 2.16.1 | MIT（要求 Python >=3.11） | 是 |
+| pydantic | 数据模型/校验 | 2.14.1 | MIT | 是 |
 | pytest | 测试 | 9.1.1 | MIT | 是 |
 | pytest-cov | 覆盖率 | 7.1.0 | MIT | 是 |
 | ruff | 检查/格式化 | 0.17.2 | MIT | 是 |
+| pip-licenses | 许可证审计（仅开发） | 5.5.5 | MIT | 是 |
 
 **结论：项目可采用 MIT 许可证。**
 
-间接依赖（click、shellingham、colorama、typing-extensions、python-dotenv、annotated-doc 等）目前未逐个核实，其中 `annotated-doc` 需要确认。因此增加一条硬性流程：
+> 与初稿的差异：初稿计划用 `pydantic-settings` 加载配置，实现时判断单机诊断
+> 工具不需要外部配置源，改用 Pydantic 模型 + 默认值，该依赖已移除；初稿担心
+> typer 会引入 `click`，但 0.27 起 typer 已不再依赖 click。
 
-> 安装依赖后运行 `pip-licenses --format=markdown --with-urls`，把完整清单写入 `docs/THIRD_PARTY_LICENSES.md` 并纳入版本控制；CI 中禁止出现 GPL/AGPL/SSPL 类许可证（`pip-licenses --fail-on="GPL;AGPL;SSPL"`）。
+间接依赖由 `docs/THIRD_PARTY_LICENSES.md` 完整登记（当前 20 个包），
+初稿悬而未决的 `annotated-doc` 已确认为 **MIT**。
+
+### 2.1 许可证门禁（已落地）
+
+清单由脚本生成，CI 负责校验：
+
+```bash
+python scripts/gen_licenses.py          # 重新生成清单
+python scripts/gen_licenses.py --check  # CI 执行：策略检查 + 清单一致性
+```
+
+> **不使用 `pip-licenses --fail-on="GPL;AGPL;SSPL"`。**
+>
+> 初稿写的这条命令实际无效：`--fail-on` 默认是精确匹配，而真实许可证字段
+> 是 `LGPL-2.1`、`GPL-3.0-only`、`GPLv3` 等写法，会全部漏过。已实测：对声明
+> `License: LGPL-2.1` 的包，该命令退出码为 **0（放行）**，加 `--partial-match`
+> 才为 1。
+>
+> 现改用**白名单**（默认拒绝）：`--allow-only="MIT;BSD;Apache;ISC;PSF;..."`
+> 配合 `--partial-match`。新增依赖若使用白名单外的许可证，CI 会失败并要求
+> 人工审查后显式放行。清单一致性检查可防止"装了新依赖但忘了更新清单"。
 
 ---
 
@@ -368,7 +391,15 @@ jobs:
       - run: ruff check .
       - run: ruff format --check .
       - run: pytest -q --cov=agent_doctor --cov-fail-under=85
-      - run: python -m pip_licenses --fail-on="GPL;AGPL;SSPL"
+  license:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.12" }
+      - run: python -m pip install -e ".[dev]"
+      # 白名单策略检查 + 清单一致性检查，详见 §2.1
+      - run: python scripts/gen_licenses.py --check
 ```
 
 `pyproject.toml` 关键配置：
@@ -377,7 +408,7 @@ jobs:
 [project]
 name = "agent-doctor"
 requires-python = ">=3.12"
-dependencies = ["typer>=0.27,<1", "rich>=15,<16", "pydantic>=2.14,<3", "pydantic-settings>=2.16,<3"]
+dependencies = ["typer>=0.27,<1", "rich>=15,<16", "pydantic>=2.14,<3"]
 
 [project.scripts]
 agent-doctor = "agent_doctor.cli.app:main"
