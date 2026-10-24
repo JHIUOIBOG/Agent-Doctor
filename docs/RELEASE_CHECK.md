@@ -20,7 +20,7 @@
 | 构建 | wheel + sdist 成功，产物校验通过 |
 | wheel 隔离安装 | 四个命令均可运行 |
 | 密钥/个人路径扫描 | 未发现真实凭据或个人路径 |
-| **CI 实际运行** | **从未运行，未知** |
+| **CI 实际运行** | **已运行两次，未全绿**（见 §6.1） |
 
 **可以推送验证，但不能据此认为"发布就绪"。** 主要未知项见 §6。
 
@@ -176,18 +176,46 @@ Incompatible versions:     2.x
 
 ## 6. 风险与未验证项
 
-### 6.1 高：CI 从未运行
+### 6.1 CI 已运行，未全绿（原"从未运行"的判断已作废）
 
-三个 job、四个矩阵组合全部未在 GitHub 上执行过。以下都是推测而非事实：
+首次运行 `dfe4745`、第二次 `80ebee4`，两次结果一致：
 
-- Ubuntu 上 257 个测试是否全绿（测试中无任何 `skipif` 或平台分支，全部假设跨平台）；
-- `windows.longpath` 在 Linux 返回 INFO 时，`test_cli_check` 的断言是否仍成立；
-- 矩阵四个组合的安装耗时与成功率。
+| Job | 结果 |
+|------|------|
+| windows-latest / py3.12 | ✅ success |
+| windows-latest / py3.13 | ✅ success |
+| ubuntu-latest / py3.12 | ❌ failure（Pytest） |
+| ubuntu-latest / py3.13 | ❌ failure（Pytest） |
+| build | ✅ success |
+| license policy | ❌ failure |
 
-### 6.2 中：Python 3.12 未实测
+**已定位并修复：license policy**
 
-本机只有 3.13。`vermin` 静态检测最低 3.11，但静态分析不覆盖运行时行为差异
-（例如 `datetime.UTC`、`StrEnum` 的确切可用性已在 3.11 落地，风险较低）。
+第一次判断是"平台错配"（`typer` 依赖 `colorama; platform_system == "Windows"`，
+Linux 不装），于是把 job 改到 `windows-latest`。第二次仍失败，说明这个判断
+不完整。
+
+真实原因是**清单记录了精确版本号**：依赖用 `>=` 区间声明，CI 每次安装当时的
+最新版，版本号与本地必然不同，而字节级比对对版本号敏感。这与许可证无关。
+
+修复：清单改为解析 `pip-licenses --format=json` 并自行渲染，只保留
+`Name / License / URL`，不记录版本。现在清单只对"依赖增删"或"某个包的许可证
+变化"敏感。已加测试锁住该语义（`test_version_drift_does_not_expire_manifest`）。
+
+**未定位：ubuntu 的 Pytest 失败**
+
+公开仓库的 job 日志下载需要认证（`/actions/jobs/{id}/logs` 返回 403），
+`annotations` 只给出"退出码 1"，`$GITHUB_STEP_SUMMARY` 不进 `check_run.output.summary`。
+已改进 CI：只把 `FAILED` / `ERROR` 行转成注解，下一轮运行即可看到具体测试名。
+
+两次运行都显示 Windows 全绿、Ubuntu 的 Ruff 与格式检查通过，失败集中在 Pytest。
+最可能的方向是某处对 POSIX 路径或临时目录的假设（例如
+`test_hash_json_output` 断言脱敏后路径以 `<` 开头），但**尚未证实**。
+
+### 6.2 中：Python 3.12 已实测
+
+`windows-latest / py3.12` 通过，覆盖了此前"3.12 未实测"的空白。
+Ubuntu 侧因 Pytest 失败，3.12 在 Linux 上仍未验证。
 
 ### 6.3 中：依赖版本未锁定
 
@@ -236,8 +264,31 @@ Incompatible versions:     2.x
 
 ## 8. 建议的下一步
 
-1. 你确认 §7 的第 1–4 条；
-2. 我推送到指定远端的目标分支（不碰默认分支、不建 Release）；
-3. 观察 Actions 三个 job 的真实结果，把失败项如实记录后再修。
+1. 网络恢复后推送 `ebe328c`（license 修复 + CI 诊断改进）；
+2. 看新一轮 CI 的注解，定位 Ubuntu 的 Pytest 失败；
+3. Ubuntu 全绿之前，不发布 PyPI。
 
-在拿到远端地址之前，不会执行任何推送。
+---
+
+## 9. 推送状态（本报告更新时）
+
+- 远端：`https://github.com/JHIUOIBOG/Agent-Doctor`，**public**，默认分支 `main`
+- 远端 HEAD：`80ebee4`
+- 本地 HEAD：`ebe328c`（**尚未推送**）
+
+阻断原因：`github.com:443` 网络不可用。
+
+| 路径 | 结果 |
+|------|------|
+| HTTPS 经代理 | `502 CONNECT tunnel failed` |
+| HTTPS 直连 | `Connection reset` / 连接超时 |
+| `api.github.com` | 正常（200），DNS 解析正确（`20.205.243.166`） |
+| `ssh.github.com:443` | 可达，但本机无 `~/.ssh` 密钥 |
+
+网络恢复后执行：
+
+```bash
+git push origin main
+```
+
+首次推送 `dfe4745` 与第二次 `80ebee4` 都曾成功，说明这是间歇性阻断而非配置错误。
