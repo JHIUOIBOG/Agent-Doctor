@@ -33,6 +33,8 @@ dev = [
     "ruff>=0.6",
     "pip-licenses>=5.0",
     "build>=1.2",
+    # scripts/gen_licenses.py 直接用它解析依赖声明与环境标记
+    "packaging>=24",
 ]
 
 [project.scripts]

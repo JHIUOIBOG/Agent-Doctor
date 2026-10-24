@@ -1,13 +1,15 @@
 """`scripts/gen_licenses.py` 的单元测试。
 
-重点是失败路径：许可证策略违规和清单过期都必须让 CI 失败，否则门禁形同虚设。
-真实的 pip-licenses 调用被替换掉，测试不依赖本机装了哪些包。
+重点是失败路径：许可证策略违规、依赖闭包不完整、清单过期都必须让 CI 失败，
+否则门禁形同虚设。真实的 pip-licenses 调用被替换掉，测试不依赖本机装了哪些包；
+依赖闭包的计算则用假的分发数据喂进去，不读真实环境。
 """
 
 from __future__ import annotations
 
 import json
 import subprocess
+import sys
 from typing import TYPE_CHECKING
 
 import pytest
@@ -31,6 +33,7 @@ FAKE_JSON = _payload(
     ("rich", "15.0.0", "MIT", "https://github.com/Textualize/rich"),
     ("typer", "0.27.3", "MIT", "https://github.com/fastapi/typer"),
 )
+FAKE_CLOSURE = ("rich", "typer")
 OFFENDER_LINE = "license GPL-3.0-only not in allow-only licenses was found for pkg:1.0.0"
 
 
@@ -42,17 +45,22 @@ def _completed(
 
 @pytest.fixture
 def fake_piplicenses(monkeypatch: pytest.MonkeyPatch) -> dict[str, object]:
-    """按调用参数返回预设结果，并暴露可修改的状态。"""
-    state: dict[str, object] = {"policy_ok": True, "payload": FAKE_JSON}
+    """按调用参数返回预设结果，并暴露可修改的状态与调用记录。"""
+    state: dict[str, object] = {"policy_ok": True, "payload": FAKE_JSON, "calls": []}
+    calls: list[tuple[tuple[str, ...], tuple[str, ...]]] = []
 
-    def _fake(*args: str) -> subprocess.CompletedProcess[str]:
+    def _fake(*args: str, packages: tuple[str, ...] = ()) -> subprocess.CompletedProcess[str]:
+        calls.append((args, tuple(packages)))
         if any(arg.startswith("--allow-only") for arg in args):
             if state["policy_ok"]:
                 return _completed(0)
             return _completed(1, stdout=OFFENDER_LINE)
         return _completed(0, stdout=str(state["payload"]))
 
+    state["calls"] = calls
     monkeypatch.setattr(gen_licenses, "_run_piplicenses", _fake)
+    # 闭包计算会读真实环境，测试里固定成替身数据。
+    monkeypatch.setattr(gen_licenses, "dependency_closure", lambda: FAKE_CLOSURE)
     return state
 
 
@@ -62,6 +70,199 @@ def output_path(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> Path:
     target = tmp_path / "docs" / "THIRD_PARTY_LICENSES.md"
     monkeypatch.setattr(gen_licenses, "OUTPUT_PATH", target)
     return target
+
+
+# --------------------------------------------------------------------------
+# 依赖闭包计算
+# --------------------------------------------------------------------------
+
+
+def test_resolve_closure_expands_transitively() -> None:
+    closure = gen_licenses._resolve_closure(
+        ["typer>=0.27"],
+        {
+            "typer": ["click>=8"],
+            "click": ["colorama; platform_system == 'Windows'"],
+            "colorama": [],
+        },
+    )
+
+    assert closure == ("click", "colorama", "typer")
+
+
+def test_resolve_closure_uses_target_environment_not_host() -> None:
+    """闭包按固定的 Windows 目标环境求值，因此 Linux 上也得到同一结果。"""
+    closure = gen_licenses._resolve_closure(
+        ["typer"],
+        {
+            "typer": [
+                "colorama; platform_system == 'Windows'",
+                "uvloop; sys_platform == 'linux'",
+            ],
+            "colorama": [],
+            "uvloop": [],
+        },
+    )
+
+    assert closure == ("colorama", "typer")
+
+
+def test_resolve_closure_excludes_root_package() -> None:
+    """清单是"第三方"依赖，项目自身不该出现在里面。"""
+    closure = gen_licenses._resolve_closure(
+        ["rich"],
+        {"agent-doctor": ["rich"], "rich": ["agent-doctor"]},
+    )
+
+    assert "agent-doctor" not in closure
+
+
+def test_resolve_closure_skips_uninstalled_packages() -> None:
+    """声明了但没安装的包无法展开，跳过即可——完整性检查会负责报告。"""
+    closure = gen_licenses._resolve_closure(["typer", "missing"], {"typer": []})
+
+    assert closure == ("typer",)
+
+
+def test_resolve_closure_normalizes_names() -> None:
+    closure = gen_licenses._resolve_closure(["pydantic_core"], {"pydantic-core": []})
+
+    assert closure == ("pydantic-core",)
+
+
+def test_resolve_closure_is_sorted() -> None:
+    closure = gen_licenses._resolve_closure(["zeta", "alpha"], {"zeta": [], "alpha": []})
+
+    assert closure == ("alpha", "zeta")
+
+
+def test_resolve_closure_survives_cycles() -> None:
+    """依赖图里的环不能让脚本死循环。"""
+    closure = gen_licenses._resolve_closure(
+        ["a"],
+        {"a": ["b"], "b": ["a"]},
+    )
+
+    assert closure == ("a", "b")
+
+
+def test_parse_requirements_includes_dev_extra() -> None:
+    names = gen_licenses._parse_requirements(["pytest>=8.3; extra == 'dev'"], extras=("", "dev"))
+
+    assert names == ["pytest"]
+
+
+def test_parse_requirements_ignores_other_extras() -> None:
+    names = gen_licenses._parse_requirements(["sphinx; extra == 'docs'"], extras=("", "dev"))
+
+    assert names == []
+
+
+def test_parse_requirements_rejects_invalid_spec() -> None:
+    with pytest.raises(SystemExit, match="无法解析依赖声明"):
+        gen_licenses._parse_requirements(["==="], extras=("",))
+
+
+def test_declared_requirements_reads_pyproject(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """起点必须是 pyproject.toml：已安装元数据在改过 pyproject 后会过期。"""
+    pyproject = tmp_path / "pyproject.toml"
+    pyproject.write_text(
+        """
+[project]
+dependencies = ["typer>=0.27"]
+
+[project.optional-dependencies]
+dev = ["pytest>=8.3"]
+docs = ["mkdocs"]
+""",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(gen_licenses, "PYPROJECT", pyproject)
+
+    assert gen_licenses._declared_requirements() == ["typer>=0.27", "pytest>=8.3"]
+
+
+def test_declared_requirements_fails_without_pyproject(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.setattr(gen_licenses, "PYPROJECT", tmp_path / "nope.toml")
+
+    with pytest.raises(SystemExit, match="找不到"):
+        gen_licenses._declared_requirements()
+
+
+def test_installed_requires_normalizes_names(monkeypatch: pytest.MonkeyPatch) -> None:
+    class _Dist:
+        def __init__(self, name: str | None, requires: list[str]) -> None:
+            self.metadata = {"Name": name}
+            self.requires = requires
+
+    monkeypatch.setattr(
+        gen_licenses.metadata,
+        "distributions",
+        lambda: [_Dist("PyTest_Cov", ["coverage"]), _Dist(None, ["junk"])],
+    )
+
+    assert gen_licenses._installed_requires() == {"pytest-cov": ["coverage"]}
+
+
+# --------------------------------------------------------------------------
+# pip-licenses 调用参数
+# --------------------------------------------------------------------------
+
+
+def test_build_content_requests_closure_only(fake_piplicenses: dict[str, object]) -> None:
+    """只按闭包取数，环境里多装的包不该混进清单。"""
+    gen_licenses.build_content()
+
+    args, packages = fake_piplicenses["calls"][0]  # type: ignore[index]
+    assert packages == FAKE_CLOSURE
+    assert "--with-urls" in args
+
+
+def test_piplicenses_command_uses_closure_and_system_flag() -> None:
+    """不加 --with-system 时 pip-licenses 会静默跳过它自己和 prettytable/wcwidth。
+
+    这两个包是本项目的 dev 依赖，被跳过等于清单里凭空少三行。
+    """
+    cmd = gen_licenses._piplicenses_command("--format=json", packages=("rich", "typer"))
+
+    assert cmd[:3] == [sys.executable, "-m", "piplicenses"]
+    assert "--with-system" in cmd
+    assert cmd[cmd.index("--packages") + 1 :] == ["rich", "typer"]
+
+
+def test_piplicenses_command_omits_packages_when_empty() -> None:
+    assert "--packages" not in gen_licenses._piplicenses_command("--format=json")
+
+
+def test_build_content_reports_declared_but_missing(fake_piplicenses: dict[str, object]) -> None:
+    """闭包里有、环境里没有的包必须报错，否则清单会静默缺行。"""
+    fake_piplicenses["payload"] = _payload(
+        ("rich", "15.0.0", "MIT", "https://github.com/Textualize/rich")
+    )
+
+    with pytest.raises(SystemExit, match="清单会不完整") as excinfo:
+        gen_licenses.build_content()
+
+    assert "typer" in str(excinfo.value)
+    assert "pip install -e" in str(excinfo.value)
+
+
+def test_empty_closure_is_rejected(
+    monkeypatch: pytest.MonkeyPatch, fake_piplicenses: dict[str, object]
+) -> None:
+    monkeypatch.setattr(gen_licenses, "dependency_closure", lambda: ())
+
+    with pytest.raises(SystemExit, match="依赖闭包为空"):
+        gen_licenses.build_content()
+
+
+# --------------------------------------------------------------------------
+# 生成与校验
+# --------------------------------------------------------------------------
 
 
 def test_generate_writes_header_and_table(
@@ -171,10 +372,11 @@ def test_version_drift_does_not_expire_manifest(
 
 
 def test_added_package_expires_manifest(
-    fake_piplicenses: dict[str, object], output_path: Path
+    fake_piplicenses: dict[str, object], output_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     gen_licenses.main([])
 
+    monkeypatch.setattr(gen_licenses, "dependency_closure", lambda: ("httpx", "rich", "typer"))
     fake_piplicenses["payload"] = _payload(
         ("rich", "15.0.0", "MIT", "https://github.com/Textualize/rich"),
         ("typer", "0.27.3", "MIT", "https://github.com/fastapi/typer"),
@@ -199,11 +401,14 @@ def test_license_change_expires_manifest(
 
 
 def test_unknown_url_is_blanked(fake_piplicenses: dict[str, object], output_path: Path) -> None:
-    fake_piplicenses["payload"] = _payload(("pkg", "1.0", "MIT", "UNKNOWN"))
+    fake_piplicenses["payload"] = _payload(
+        ("rich", "15.0.0", "MIT", "UNKNOWN"),
+        ("typer", "0.27.3", "MIT", "https://github.com/fastapi/typer"),
+    )
     gen_licenses.main([])
 
     content = output_path.read_text(encoding="utf-8")
-    assert "| pkg | MIT |  |" in content
+    assert "| rich | MIT |  |" in content
     assert "UNKNOWN" not in content
 
 

@@ -73,6 +73,22 @@ python scripts/gen_licenses.py --check  # CI 执行：策略检查 + 清单一�
 > 配合 `--partial-match`。新增依赖若使用白名单外的许可证，CI 会失败并要求
 > 人工审查后显式放行。清单一致性检查可防止"装了新依赖但忘了更新清单"。
 
+> **统计口径：依赖闭包，不是"环境里装了什么"。**
+>
+> 初版直接列出整个环境。这在本地 venv 里刚好等于依赖集，但在 GitHub Actions
+> 的 Windows runner 上不成立——runner 预装 pipx 及其依赖（click、platformdirs、
+> userpath、filelock、argcomplete），它们会混进清单而本地没有，CI 必然红。
+> 逐个拉黑预装包不可维护。
+>
+> 现从 `pyproject.toml` 的声明出发，沿已安装分发的 `Requires-Dist` 递归展开，
+> 环境标记按固定的 Windows 目标环境求值（不按运行脚本的机器），因此结果与
+> 平台、与本机装了什么都无关。起点用 pyproject 而非已安装元数据，是因为
+> `pip install -e .` 之后改 pyproject 会让元数据过期，闭包会静默漏依赖。
+>
+> 另需 `--with-system`：pip-licenses 默认跳过 `SYSTEM_PACKAGES`（它自己、
+> prettytable、wcwidth、pip、setuptools、wheel），前三个是本项目真实的 dev
+> 依赖，跳过等于漏报三行。
+
 ---
 
 ## 3. 目录结构

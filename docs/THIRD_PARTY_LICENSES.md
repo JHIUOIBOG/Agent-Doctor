@@ -13,12 +13,11 @@ CI 通过**白名单**强制该政策：默认拒绝未知许可证。新增依�
 之外的许可证，构建会失败，需人工审查后在 `scripts/gen_licenses.py` 的
 `ALLOWED_LICENSES` 中显式放行。
 
-> **为什么不用 `--fail-on="GPL;AGPL;SSPL"`**
+> **清单的范围：依赖闭包，不是当前环境**
 >
-> 该参数默认是精确匹配，而真实许可证字段的写法是 `LGPL-2.1`、
-> `GPL-3.0-only`、`GPLv3` 等，精确匹配会全部漏过。本项目实测确认过：
-> 对一个声明 `License: LGPL-2.1` 的包，`--fail-on="GPL;AGPL;SSPL"`
-> 退出码为 0（放行），加上 `--partial-match` 才为 1。因此改用白名单。
+> 表格里的包是从 `pyproject.toml` 的声明出发、沿 Requires-Dist 递归展开的
+> 闭包。环境里额外安装了什么（CI runner 预装的工具、本地临时装的包）不会
+> 进入清单，因此同一份清单在任何机器上都能校验通过。
 
 > **为什么不记录版本号**
 >
@@ -26,6 +25,13 @@ CI 通过**白名单**强制该政策：默认拒绝未知许可证。新增依�
 > 任何一次依赖升级都会让清单"过期"，而那与许可证无关，只会制造噪音。
 > 清单记录的是**依赖集合与各自的许可证**：包的增删或许可证变更会让
 > `--check` 失败，版本漂移不会。
+
+> **为什么不用 `--fail-on="GPL;AGPL;SSPL"`**
+>
+> 该参数默认是精确匹配，而真实许可证字段的写法是 `LGPL-2.1`、
+> `GPL-3.0-only`、`GPLv3` 等，精确匹配会全部漏过。本项目实测确认过：
+> 对一个声明 `License: LGPL-2.1` 的包，`--fail-on="GPL;AGPL;SSPL"`
+> 退出码为 0（放行），加上 `--partial-match` 才为 1。因此改用白名单。
 
 ## 清单
 
@@ -40,7 +46,9 @@ CI 通过**白名单**强制该政策：默认拒绝未知许可证。新增依�
 | markdown-it-py | MIT License | https://github.com/executablebooks/markdown-it-py |
 | mdurl | MIT License | https://github.com/executablebooks/mdurl |
 | packaging | Apache-2.0 OR BSD-2-Clause | https://github.com/pypa/packaging |
+| pip-licenses | MIT | https://github.com/raimon49/pip-licenses |
 | pluggy | MIT License | https://github.com/pytest-dev/pluggy |
+| prettytable | BSD-3-Clause | https://github.com/prettytable/prettytable |
 | pydantic | MIT | https://github.com/pydantic/pydantic |
 | pydantic_core | MIT | https://github.com/pydantic |
 | Pygments | BSD-2-Clause | https://pygments.org |
@@ -53,3 +61,4 @@ CI 通过**白名单**强制该政策：默认拒绝未知许可证。新增依�
 | typer | MIT | https://github.com/fastapi/typer |
 | typing-inspection | MIT | https://github.com/pydantic/typing-inspection |
 | typing_extensions | PSF-2.0 | https://github.com/python/typing_extensions |
+| wcwidth | MIT License | https://github.com/jquast/wcwidth |
